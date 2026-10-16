@@ -1,3 +1,5 @@
+"""gui.py — графічний інтерфейс (tkinter + matplotlib)"""
+import math
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import numpy as np
@@ -7,19 +9,25 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import data_processing as dp
 import math_statistics as ms
 import visualization as viz
+from gui_lab2 import LawTab, SimTab
+
+TITLE = "ІАД || Лукашевич К. || ПП-31/1"
+DEFAULT_K = 7
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("ІАД || ЛР №1 || Первинний статистичний аналіз (ІАД) || Лукашевич К. ПП-31/1")
+        self.title(TITLE)
         self.geometry("1350x860")
         # стан
         self.path = None
-        self.raw_t = self.raw_v = None
-        self.cur_t = self.cur_v = None
-        self.types = {}
+        self.raw_t = self.raw_v = None       # вихідні дані (NaN = пропуск)
+        self.cur_t = self.cur_v = None       # поточні дані
+        self.types = {}                      # {індекс у raw: 'real'|'technical'}
         self.transformed = False
-        self.stages = []
+        self.stages = []                     # [(мітка, n, x̄, S², A, E)]
+        self._log = []
+        self.alpha_var = tk.StringVar(value="0.1")   # α для ЛР2 (спільне для вкладок)
         self._build()
 
     # побудова інтерфейсу
@@ -43,15 +51,16 @@ class App(tk.Tk):
         for c, w, txt in (("t", 55, "час"), ("v", 50, "знач."), ("k", 110, "тип (2×клік — змінити)")):
             self.tree.heading(c, text=txt); self.tree.column(c, width=w)
         self.tree.pack(fill="x"); self.tree.bind("<Double-1>", self.toggle_type)
+        self.journal = tk.Label(box, text="", wraplength=250, justify="left", anchor="w", fg="#555", font=("Arial", 8))
+        self.journal.pack(fill="x")
         for txt, m in (("Замінити середнім періоду", "period"), ("Замінити загальним середнім", "global"),
                        ("Видалити", "delete")):
             ttk.Button(box, text=txt, command=lambda m=m: self.apply_clean(m)).pack(fill="x")
 
         box = ttk.LabelFrame(left, text="3. Параметри"); box.pack(fill="x", pady=3)
-        self.gamma_var, self.k_var, self.step_var = tk.StringVar(value="0.95"), tk.StringVar(), tk.StringVar(value="5")
+        self.gamma_var, self.k_var = tk.StringVar(value="0.95"), tk.StringVar(value=str(DEFAULT_K))
         for lab, var in (("γ (довірча ймовірність)", self.gamma_var),
-                         ("к-ть класів (порожньо = Стерджес)", self.k_var),
-                         ("«ручний» крок h", self.step_var)):
+                         ("к-ть класів k (за замовч. 7)", self.k_var)):
             r = ttk.Frame(box); r.pack(fill="x"); ttk.Label(r, text=lab).pack(side="left")
             ttk.Entry(r, textvariable=var, width=7).pack(side="right")
         ttk.Button(box, text="Перерахувати та побудувати", command=self.refresh).pack(fill="x")
@@ -67,21 +76,35 @@ class App(tk.Tk):
         self.info = tk.Label(left, justify="left", anchor="w", bg="#f4f4f4", relief="sunken", wraplength=250)
         self.info.pack(fill="x", pady=3)
 
-        # графіки таблиці праворуч
+        # праворуч: вкладки + таблиця характеристик
         self.nb = ttk.Notebook(right); self.nb.pack(fill="both", expand=True)
         self.figs = {}
-        for key, name in (("ts", "Часовий ряд"), ("hist", "Гістограми"), ("cdf", "Функція розподілу")):
+        for key, name in (("ts", "Часовий ряд"), ("hist", "Гістограма"), ("cdf", "Функція розподілу")):
             fr = ttk.Frame(self.nb); self.nb.add(fr, text=name)
             fig = Figure(figsize=(9, 4.4), dpi=100)
             cv = FigureCanvasTkAgg(fig, master=fr); cv.get_tk_widget().pack(fill="both", expand=True)
             self.figs[key] = (fig, cv)
+        self.law_tab = LawTab(self.nb, self); self.nb.add(self.law_tab, text="Закон розподілу")
+        self.sim_tab = SimTab(self.nb, self); self.nb.add(self.sim_tab, text="Моделювання")
 
-        bot = ttk.Frame(right); bot.pack(fill="x")
-        self.tab = ttk.Treeview(bot, columns=("c", "lo", "th", "hi", "sg"), show="headings", height=6)
+        self.bot = ttk.Frame(right); self.bot.pack(fill="x")
+        ttk.Label(self.bot, text="θ - оцінка; θн, θв - межі довірчого інтервалу θ ± t·σθ; σθ - похибка оцінки; "
+                                 "x̄ - середнє, S² - дисперсія, S - СКВ, A - асиметрія, E - ексцес",
+                  font=("Arial", 8), foreground="#555").pack(anchor="w")
+        row = ttk.Frame(self.bot); row.pack(fill="x")
+        self.tab = ttk.Treeview(row, columns=("c", "lo", "th", "hi", "sg"), show="headings", height=6)
         for c, txt, w in (("c", "Характеристика", 130), ("lo", "θн", 90), ("th", "θ", 90), ("hi", "θв", 90), ("sg", "σθ", 90)):
             self.tab.heading(c, text=txt); self.tab.column(c, width=w)
         self.tab.pack(side="left")
-        self.txt = tk.Text(bot, height=9, width=70, font=("Consolas", 9)); self.txt.pack(side="left", fill="both", expand=True)
+        self.txt = tk.Text(row, height=9, width=70, font=("Consolas", 9)); self.txt.pack(side="left", fill="both", expand=True)
+        self.nb.bind("<<NotebookTabChanged>>", self._tab_changed)
+
+    def _tab_changed(self, _=None):
+        """Таблицю ЛР1 показуємо лише на вкладках ЛР1"""
+        if self.nb.index(self.nb.select()) >= 3:
+            self.bot.pack_forget()
+        else:
+            self.bot.pack(fill="x")
 
     # допоміжне
     def err(self, e):
@@ -97,7 +120,7 @@ class App(tk.Tk):
         except ValueError:
             raise ValueError("γ має бути числом")
         if not 0 < g < 1:
-            raise ValueError("γ має бути в межах інтервалу (0; 1)")
+            raise ValueError("γ має бути в інтервалі (0; 1)")
         return g
 
     def _bounds(self):
@@ -109,6 +132,24 @@ class App(tk.Tk):
             raise ValueError("Нижня межа має бути меншою за верхню")
         return lo, hi
 
+    def get_k(self):
+        """Кількість класів: з поля; порожнє поле = значення за замовчуванням (7)."""
+        txt = self.k_var.get().strip()
+        if not txt:
+            return DEFAULT_K
+        try:
+            k = int(txt)
+        except ValueError:
+            raise ValueError("Кількість класів має бути цілим числом")
+        if k < 1:
+            raise ValueError("Кількість класів має бути ≥ 1")
+        return k
+
+    def values_clean(self):
+        """Поточні дані без NaN для ЛР1-таблиць і вкладок ЛР2"""
+        self._need_data()
+        return [float(v) for v in self.cur_v if not np.isnan(v)]
+
     # дії
     def open_file(self):
         p = filedialog.askopenfilename(filetypes=[("Дані", "*.xlsx *.xls *.csv *.txt"), ("Усі", "*.*")])
@@ -116,10 +157,11 @@ class App(tk.Tk):
             return
         self.path = p
         try:
-            if p.lower().endswith((".xlsx", ".xls", ".xlsm")):
+            if p.lower().endswith((".xlsx", ".xlsm", ".xls")):
                 sheets = dp.list_sheets(p)
+                var_sheets = [s for s in sheets if s.startswith("Варіант")]
                 self.sheet_cb["values"] = sheets
-                self.sheet_var.set(next((s for s in sheets if "10" in s), sheets[-1]))
+                self.sheet_var.set(next((s for s in sheets if s.endswith("10")), (var_sheets or sheets)[-1]))
             else:
                 self.sheet_cb["values"] = []; self.sheet_var.set("")
             self.load()
@@ -131,8 +173,14 @@ class App(tk.Tk):
             t, v, bad, title = dp.load_file(self.path, self.sheet_var.get() or None)
         except Exception as e:
             return self.err(e)
-        self.raw_t, self.raw_v = t, v
-        self.bad = bad
+        self.raw_t, self.raw_v, self.bad = t, v, bad
+        # межі аномалій і журнал подій — з аркуша «Опис варіантів»
+        info = dp.read_variant_info(self.path, self.sheet_var.get()) if self.sheet_var.get() else None
+        if info:
+            self.lo_var.set(f"{info['lo']:g}"); self.hi_var.set(f"{info['hi']:g}")
+            self.journal.config(text=f"Журнал: {info['journal']}")
+        else:
+            self.journal.config(text="")
         self.reset(silent=True)
         if bad:
             messagebox.showwarning("Увага", f"{bad} нечислових значень сприйнято як пропуски")
@@ -163,7 +211,7 @@ class App(tk.Tk):
         try:
             self._need_data()
             if self.transformed:
-                raise ValueError("Спочатку скиньте всі зміни»")
+                raise ValueError("Спочатку натисніть «Скинути всі зміни».")
             tech = [i for i, k in self.types.items() if k == "technical"]
             t, v, log = dp.clean(self.raw_t, self.raw_v, tech, method)
         except Exception as e:
@@ -188,7 +236,7 @@ class App(tk.Tk):
         def f(v):
             y, sh = dp.log_transform(v)
             if sh:
-                messagebox.showinfo("Зсув", f"Були значення <= 0, виконано зсув на c = {sh:g} перед ln")
+                messagebox.showinfo("Зсув", f"Були значення ≤ 0, виконано зсув на c = {sh:g} перед ln")
             return y
         self._transform(f, "ln x")
 
@@ -199,7 +247,7 @@ class App(tk.Tk):
         try:
             c = float(self.c_var.get().replace(",", "."))
         except ValueError:
-            return self.err("c має бути числом")
+            return self.err("c має бути числом.")
         self._transform(lambda v: dp.shift_by(v, c), f"зсув c={c:g}")
 
     def reset(self, silent=False):
@@ -213,24 +261,25 @@ class App(tk.Tk):
 
     def _stage(self, label):
         try:
-            x = [v for v in self.cur_v if not np.isnan(v)]
+            x = self.values_clean()
             rows, _ = ms.characteristics(x, 0.95)
             self.stages.append((label, len(x), rows[0][2], rows[1][2], rows[3][2], rows[4][2]))
         except Exception:
             pass
 
-    # оновлення виводу
+    # вивод
+    def _ax(self, key):
+        fig = self.figs[key][0]; fig.clear()
+        return fig.subplots()
+
     def refresh(self):
         if self.raw_v is None:
             return
         try:
             gamma = self._gamma(); lo, hi = self._bounds()
-            x = [float(v) for v in self.cur_v if not np.isnan(v)]
+            x = self.values_clean()
             rows, tq = ms.characteristics(x, gamma)
-            k = int(self.k_var.get()) if self.k_var.get().strip() else ms.sturges_k(len(x))
-            if k < 1:
-                raise ValueError("Кількість класів має бути >= 1")
-            step = float(self.step_var.get().replace(",", "."))
+            k = self.get_k()
         except ValueError as e:
             return self.err(e)
 
@@ -245,26 +294,25 @@ class App(tk.Tk):
 
         # графіки
         raw = (self.raw_t, self.raw_v) if not self.transformed else None
-        viz.plot_timeseries(self.figs["ts"][0].subplots() if not self.figs["ts"][0].axes else self.figs["ts"][0].axes[0],
-                            self.cur_t, self.cur_v, raw=raw, bounds=(lo, hi) if raw else None,
-                            types=self.types if raw else None)
-        fh = self.figs["hist"][0]; fh.clear(); a1, a2 = fh.subplots(1, 2)
+        viz.plot_timeseries(self._ax("ts"), self.cur_t, self.cur_v, raw=raw,
+                            bounds=(lo, hi) if raw else None, types=self.types if raw else None)
+        edges = ms.edges_by_k(x, k)
         try:
-            viz.plot_histogram(a1, x, ms.edges_by_k(x, k), "Стерджес" if not self.k_var.get().strip() else "задано k", gamma)
-            viz.plot_histogram(a2, x, ms.edges_by_step(x, step), "ручний крок", gamma)
+            viz.plot_histogram(self._ax("hist"), x, edges, "Гістограма", gamma)
         except Exception as e:
             return self.err(e)
-        fh.tight_layout()
-        fc = self.figs["cdf"][0]; fc.clear(); viz.plot_cdf(fc.subplots(), x, gamma)
-        self.figs["ts"][0].tight_layout()
+        viz.plot_cdf(self._ax("cdf"), x, gamma)
         for fig, cv in self.figs.values():
-            cv.draw()
+            fig.tight_layout(); cv.draw()
 
         # текстова панель
-        s = [f"γ={gamma}, t={tq:.4f}, ν={len(x)-1}. Стерджес: k={ms.sturges_k(len(x))} (1+3.322·lg{len(x)}="
-             f"{1 + 3.322 * np.log10(len(x)):.3f}); використано k={k}"]
-        ed = ms.edges_by_k(x, k); cnt, rel = ms.histogram(x, ed)
-        s.append("Класи: " + "; ".join(f"[{ed[i]:.1f};{ed[i+1]:.1f}) n={cnt[i]}" for i in range(k)))
+        n = len(x)
+        st = 1 + 3.322 * math.log10(n)
+        s = [f"γ={gamma}, t={tq:.4f}, ν={n - 1}.",
+             f"Класів k={k} (за замовч. 7; за Стерджесом 1+3.322·lg{n}={st:.3f} → {ms.sturges_k(n)}); "
+             f"h=(max−min)/k=({max(x):g}−{min(x):g})/{k}={(max(x) - min(x)) / k:.3f}"]
+        cnt, rel = ms.histogram(x, edges)
+        s.append("Класи: " + "; ".join(f"[{edges[i]:.1f};{edges[i+1]:.1f}) n={cnt[i]}" for i in range(k)))
         A, E = rows[3], rows[4]
         s.append(f"A: інтервал {'накриває' if A[1] <= 0 <= A[3] else 'НЕ накриває'} 0 → "
                  f"{'симетричний' if A[1] <= 0 <= A[3] else 'асиметричний (' + ('правобічний' if A[2] > 0 else 'лівобічний') + ')'}")
@@ -274,6 +322,6 @@ class App(tk.Tk):
             pm = [[v for t, v in zip(self.cur_t, x) if dp.period_index(t) == p] for p in range(4)]
             s.append("Періоди: " + "; ".join(f"{dp.PERIOD_NAMES[p].split()[0]} {np.mean(q):.2f}" for p, q in enumerate(pm) if q))
         s.append("— етапи —")
-        s += [f"{l}: n={n} x̄={m:.3f} S²={v:.2f} A={a:.3f} E={e:.3f}" for l, n, m, v, a, e in self.stages]
-        s += getattr(self, "_log", [])
+        s += [f"{l}: n={n_} x̄={m:.3f} S²={v:.2f} A={a:.3f} E={e:.3f}" for l, n_, m, v, a, e in self.stages]
+        s += self._log
         self.txt.delete("1.0", "end"); self.txt.insert("1.0", "\n".join(s))

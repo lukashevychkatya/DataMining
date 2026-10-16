@@ -115,3 +115,20 @@ def standardize(values):
 def shift_by(values, c):
     """y = x + c."""
     return _complete(values) + c
+
+# межі аномалій і журнал подій з аркуша Опис варіантів
+def read_variant_info(path, sheet):
+    """для аркуша «Варіант N» повертає {'lo', 'hi', 'object', 'indicator', 'journal'} або None"""
+    try:
+        n = int(re.findall(r"\d+", sheet)[-1])
+        df = pd.read_excel(path, sheet_name="Опис варіантів", header=None)
+    except Exception:
+        return None
+    for _, r in df.iterrows():
+        try:
+            if int(r.iloc[0]) == n:
+                return {"object": str(r.iloc[1]), "indicator": str(r.iloc[2]), "journal": str(r.iloc[4]),
+                        "lo": float(r.iloc[-2]), "hi": float(r.iloc[-1])}
+        except (ValueError, TypeError):
+            continue
+    return None
