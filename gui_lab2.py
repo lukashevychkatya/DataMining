@@ -101,6 +101,7 @@ class SimTab(ttk.Frame):
     """Моделювання методом зворотної функції, T-тест, R повторень, δ(N)"""
     def __init__(self, master, app):
         super().__init__(master)
+        self.base_seed_var = tk.StringVar(value="12345")
         self.app = app
         self.rows = self.tvals = self.delta = self.req = None
         self.header = ""
@@ -109,7 +110,7 @@ class SimTab(ttk.Frame):
         self.R_var, self.N_var = tk.StringVar(value="300"), tk.StringVar(value="50, 400, 1000")
         self.seed_var, self.n1_var = tk.StringVar(value="12345"), tk.StringVar(value="1000")
         self.param_var = tk.StringVar()
-        self.auto_seed = tk.BooleanVar(value=False)
+        self.run_no = 0
         self.run_no = 0
         left = ttk.LabelFrame(self, text="Параметри експерименту"); left.pack(side="left", fill="y", padx=4, pady=3)
         ttk.Label(left, text="Закон").pack(anchor="w")
@@ -118,15 +119,13 @@ class SimTab(ttk.Frame):
         self.l1, self.l2 = ttk.Label(left, text="m"), ttk.Label(left, text="σ")
         self.e1, self.e2 = ttk.Entry(left, textvariable=self.p1, width=12), ttk.Entry(left, textvariable=self.p2, width=12)
         self.l1.pack(anchor="w"); self.e1.pack(); self.l2.pack(anchor="w"); self.e2.pack()
-        ttk.Checkbutton(left, text="новий seed при кожному запуску", variable=self.auto_seed).pack(anchor="w", pady=2)
-        ttk.Button(left, text="Демо: 5 окремих вибірок", command=self.demo_samples).pack(fill="x", pady=2)
         ttk.Button(left, text="Взяти оцінки з даних", command=self.take_estimates).pack(fill="x", pady=3)
         for lab, var in (("R (повторень, 200–500)", self.R_var), ("α (рівень значущості)", self.app.alpha_var),
                          ("Набір обсягів N", self.N_var), ("seed", self.seed_var), ("N для однієї вибірки", self.n1_var)):
             ttk.Label(left, text=lab).pack(anchor="w"); ttk.Entry(left, textvariable=var, width=18).pack()
         ttk.Button(left, text="Одна вибірка", command=self.one_sample).pack(fill="x", pady=(8, 2))
         ttk.Button(left, text="Запустити експеримент", command=self.run).pack(fill="x")
-        ttk.Button(left, text="Експорт таблиць…", command=self.export).pack(fill="x", pady=2)
+        ttk.Button(left, text="Експорт таблиць", command=self.export).pack(fill="x", pady=2)
         self.pb = ttk.Progressbar(left, length=160); self.pb.pack(pady=3)
         self.status = ttk.Label(left, text="", wraplength=170); self.status.pack()
 
@@ -153,6 +152,7 @@ class SimTab(ttk.Frame):
         ttk.Label(right, text="Необхідний обсяг N (півширина довірчого інтервалу ≤ δ):", font=("Arial", 8)).pack(anchor="w")
         self.treq.pack(fill="x")
         self._law_changed()
+
 
     # допоміжне
     def _law_changed(self):
@@ -198,13 +198,11 @@ class SimTab(ttk.Frame):
         try:
             R = int(self.R_var.get());
             alpha = float(self.app.alpha_var.get().replace(",", "."))
-            base = int(self.seed_var.get())
+            base = int(self.base_seed_var.get())
         except ValueError:
-            raise ValueError("R і seed мають бути цілими числами, α - числом s")
-        seed = base
-        if self.auto_seed.get():
-            seed = base + self.run_no
-            self.run_no += 1
+            raise ValueError("R і seed мають бути цілими числами, α - числом ")
+        seed = base + self.run_no  # новий запуск - seed на 1 більший за попередній
+        self.run_no += 1
         Ns = sim.parse_n_set(self.N_var.get())
         sim.check_experiment(law, th0, R, alpha, Ns)
         return law, th0, R, alpha, seed, Ns
@@ -213,7 +211,9 @@ class SimTab(ttk.Frame):
     def one_sample(self):
         try:
             law = self.law_var.get(); th0 = self._theta0(); dist.check_params(law, th0)
-            N = int(self.n1_var.get()); seed = int(self.seed_var.get())
+            N = int(self.n1_var.get())
+            seed = int(self.base_seed_var.get()) + self.run_no
+            self.run_no += 1
             if N < 5:
                 raise ValueError("N має бути ≥ 5.")
         except ValueError as ex:
@@ -257,6 +257,7 @@ class SimTab(ttk.Frame):
             return messagebox.showerror("Помилка", str(ex))
         self.header = (f"{law}; θ₀ = " + ", ".join(f"{k} = {v:.5g}" for k, v in th0.items()) +
                        f"; R = {R}; α = {alpha}; seed = {seed}")
+        self.seed_var.set(str(seed))
         self.head_lab.config(text=self.header)
         self.pcb.config(values=list(self.rows)); self.param_var.set(list(self.rows)[0])
         self.treq.delete(*self.treq.get_children())
