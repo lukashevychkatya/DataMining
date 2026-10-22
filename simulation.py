@@ -100,3 +100,14 @@ def required_n(law, theta0, alpha, targets=(10, 5, 2, 1)):
             row[d] = N
         res[name] = row
     return res
+
+def one_sample_decision(law, theta0, N, alpha, seed, param):
+    """Одна вибірка - θ̂, σ{θ̂}, t, tкр і висновок для вказаного параметра"""
+    rng = np.random.default_rng(seed)
+    x = dist.inv(law, rng.random(N), theta0)
+    th, sg = dist.estimate(law, x)[param]
+    th, sg = float(th), float(sg)
+    t = (theta0[param] - th) / sg
+    tcrit = float(student_t.ppf(1 - alpha / 2, N - 1))
+    return {"x": x, "θ̂": th, "σ{θ̂}": sg, "t": t, "tкр": tcrit,
+            "висновок": "відхиляємо H₀" if abs(t) > tcrit else "не відхиляємо H₀"}

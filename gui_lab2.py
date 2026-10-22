@@ -109,6 +109,8 @@ class SimTab(ttk.Frame):
         self.R_var, self.N_var = tk.StringVar(value="300"), tk.StringVar(value="50, 400, 1000")
         self.seed_var, self.n1_var = tk.StringVar(value="12345"), tk.StringVar(value="1000")
         self.param_var = tk.StringVar()
+        self.auto_seed = tk.BooleanVar(value=False)
+        self.run_no = 0
         left = ttk.LabelFrame(self, text="Параметри експерименту"); left.pack(side="left", fill="y", padx=4, pady=3)
         ttk.Label(left, text="Закон").pack(anchor="w")
         cb = ttk.Combobox(left, textvariable=self.law_var, values=dist.LAWS, state="readonly", width=20)
@@ -116,6 +118,8 @@ class SimTab(ttk.Frame):
         self.l1, self.l2 = ttk.Label(left, text="m"), ttk.Label(left, text="σ")
         self.e1, self.e2 = ttk.Entry(left, textvariable=self.p1, width=12), ttk.Entry(left, textvariable=self.p2, width=12)
         self.l1.pack(anchor="w"); self.e1.pack(); self.l2.pack(anchor="w"); self.e2.pack()
+        ttk.Checkbutton(left, text="новий seed при кожному запуску", variable=self.auto_seed).pack(anchor="w", pady=2)
+        ttk.Button(left, text="Демо: 5 окремих вибірок", command=self.demo_samples).pack(fill="x", pady=2)
         ttk.Button(left, text="Взяти оцінки з даних", command=self.take_estimates).pack(fill="x", pady=3)
         for lab, var in (("R (повторень, 200–500)", self.R_var), ("α (рівень значущості)", self.app.alpha_var),
                          ("Набір обсягів N", self.N_var), ("seed", self.seed_var), ("N для однієї вибірки", self.n1_var)):
@@ -189,12 +193,18 @@ class SimTab(ttk.Frame):
         self.status.config(text=text); self.update_idletasks()
 
     def _read_common(self):
-        law = self.law_var.get(); th0 = self._theta0()
+        law = self.law_var.get();
+        th0 = self._theta0()
         try:
-            R = int(self.R_var.get()); alpha = float(self.app.alpha_var.get().replace(",", "."))
-            seed = int(self.seed_var.get())
+            R = int(self.R_var.get());
+            alpha = float(self.app.alpha_var.get().replace(",", "."))
+            base = int(self.seed_var.get())
         except ValueError:
-            raise ValueError("R і seed мають бути цілими числами, α — числом.")
+            raise ValueError("R і seed мають бути цілими числами, α - числом s")
+        seed = base
+        if self.auto_seed.get():
+            seed = base + self.run_no
+            self.run_no += 1
         Ns = sim.parse_n_set(self.N_var.get())
         sim.check_experiment(law, th0, R, alpha, Ns)
         return law, th0, R, alpha, seed, Ns
@@ -214,6 +224,28 @@ class SimTab(ttk.Frame):
         fig.tight_layout(); cv.draw(); self.inb.select(0)
         rows = sim.sample_vs_theory(law, th0, x)
         self.status.config(text="Вибірка vs теорія:\n" + "\n".join(f"{n}: теор. {t:.4g} / вибірк. {v:.4g}" for n, t, v in rows))
+
+    def demo_samples(self, K=5):
+        """K окремих вибірок: кожна має свою гістограму, θ̂, t, tкр і висновок"""
+        try:
+            law = self.law_var.get(); th0 = self._theta0(); dist.check_params(law, th0)
+            N = int(self.n1_var.get()); seed = int(self.seed_var.get())
+            alpha = float(self.app.alpha_var.get().replace(",", "."))
+            if N < 5:
+                raise ValueError("N має бути ≥ 5.")
+            param = self.param_var.get() or dist.PARAMS[law][0]
+        except ValueError as ex:
+            return messagebox.showerror("Помилка", str(ex))
+        win = tk.Toplevel(self); win.title(f"{K} окремих вибірок, N = {N}, параметр {param}")
+        fig = Figure(figsize=(9, 2.6 * K), dpi=90)
+        cv = FigureCanvasTkAgg(fig, master=win); cv.get_tk_widget().pack(fill="both", expand=True)
+        for k in range(K):
+            d = sim.one_sample_decision(law, th0, N, alpha, seed + k, param)
+            ax = fig.add_subplot(K, 1, k + 1)
+            viz.plot_sim_sample(ax, d["x"], law, th0)
+            ax.set_title(f"Вибірка {k + 1} (seed={seed + k}): θ̂={d['θ̂']:.2f}, σ{{θ̂}}={d['σ{θ̂}']:.2f}, "
+                         f"t={d['t']:.3f}, tкр={d['tкр']:.3f} → {d['висновок']}", fontsize=8)
+        fig.tight_layout(); cv.draw()
 
     def run(self):
         try:
@@ -270,6 +302,13 @@ class SimTab(ttk.Frame):
                     pd.DataFrame({"Експеримент": [self.header]}).to_excel(w, sheet_name="Опис", index=False)
                     for p, f in frames.items():
                         f.to_excel(w, sheet_name=f"T-тест {p}"[:31], index=False)
-                    req.to_excel(w, sheet_name="Необхідне N", index=False)
+                    dec_rows = []
+                    for (p, N), tv in self.tvals.items():
+                        tc = next(r["tкр"] for r in self.rows[p] if r["N"] == N)
+                        for i, v in enumerate(tv):
+                            dec_rows.append({"параметр": p, "N": N, "№ вибірки": i + 1, "t": float(v), "tкр": tc,
+                                             "висновок": "відхиляємо H₀" if abs(v) > tc else "не відхиляємо H₀"})
+                    dec = pd.DataFrame(dec_rows)
+                    dec.to_excel(w, sheet_name="Рішення по вибірках", index=False)
         except Exception as ex:
             messagebox.showerror("Помилка експорту", str(ex))
