@@ -5,11 +5,13 @@ from tkinter import ttk, filedialog, messagebox
 import numpy as np
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from gui_lab3 import Lab3Tab
 
 import data_processing as dp
 import math_statistics as ms
 import visualization as viz
 from gui_lab2 import LawTab, SimTab
+from gui_lab4 import RegTab
 
 TITLE = "ІАД || Лукашевич К. || ПП-31/1"
 DEFAULT_K = 7
@@ -86,6 +88,7 @@ class App(tk.Tk):
             self.figs[key] = (fig, cv)
         self.law_tab = LawTab(self.nb, self); self.nb.add(self.law_tab, text="Закон розподілу")
         self.sim_tab = SimTab(self.nb, self); self.nb.add(self.sim_tab, text="Моделювання")
+        self.reg_tab = RegTab(self.nb, self); self.nb.add(self.reg_tab, text="Лінійна регресія")
 
         self.bot = ttk.Frame(right); self.bot.pack(fill="x")
         ttk.Label(self.bot, text="θ - оцінка; θн, θв - межі довірчого інтервалу θ ± t·σθ; σθ - похибка оцінки; "
@@ -98,6 +101,7 @@ class App(tk.Tk):
         self.tab.pack(side="left")
         self.txt = tk.Text(row, height=9, width=70, font=("Consolas", 9)); self.txt.pack(side="left", fill="both", expand=True)
         self.nb.bind("<<NotebookTabChanged>>", self._tab_changed)
+        self.lab3 = Lab3Tab(self.nb, self); self.nb.add(self.lab3, text="ЛР3")
 
     def _tab_changed(self, _=None):
         """Таблицю ЛР1 показуємо лише на вкладках ЛР1"""

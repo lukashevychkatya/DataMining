@@ -147,3 +147,34 @@ def plot_delta(ax, curves):
     ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlabel("N (обсяг вибірки)"); ax.set_ylabel("відносна похибка, %")
     ax.set_title("δ(N): як зменшується похибка зі зростанням N"); ax.grid(alpha=.3, which="both"); ax.legend(fontsize=7)
+
+    # ЛР4
+    def plot_regression(ax, x, y, reg, removed=None):
+        """Кореляційне поле + лінія регресії ŷ = â + b̂X; лінія проходить через (x̄; ȳ)"""
+        ax.clear()
+        ax.scatter(x, y, s=18, alpha=.7, label="кореляційне поле")
+        if removed:
+            ax.scatter([p[0] for p in removed], [p[1] for p in removed], c="gray", marker="x", s=50,
+                       label="відкинуті за правилом 3σ")
+        g = np.array([min(x), max(x)])
+        ax.plot(g, reg["a"] + reg["b"] * g, "r-", lw=2,
+                label=f"ŷ = {reg['a']:.4g} + {reg['b']:.4g}·x,  R² = {reg['R2']:.4f}")
+        ax.scatter([reg["x_mean"]], [reg["y_mean"]], c="k", marker="D", s=45, zorder=5, label="(x̄; ȳ)")
+        ax.set_title("Кореляційне поле та лінія регресії");
+        ax.set_xlabel("x");
+        ax.set_ylabel("y")
+        ax.grid(alpha=.3);
+        ax.legend(fontsize=8)
+
+    def plot_density3d(ax, x, y):
+        """Поверхня щільності f(x, y) двовимірного нормального закону з оцінками x̄, ȳ, Sₓ, Sᵧ, r̂"""
+        ax.clear()
+        mx, my, sx, sy, r = ms.mean(x), ms.mean(y), ms.std(x), ms.std(y), ms.pearson(x, y)
+        X, Y = np.meshgrid(np.linspace(mx - 3 * sx, mx + 3 * sx, 60), np.linspace(my - 3 * sy, my + 3 * sy, 60))
+        Z = ms.norm2_pdf(X, Y, mx, my, sx, sy, r)
+        ax.plot_surface(X, Y, Z, cmap="viridis", alpha=.85, linewidth=0)
+        ax.contour(X, Y, Z, zdir="z", offset=0, cmap="viridis")
+        ax.set_xlabel("x");
+        ax.set_ylabel("y");
+        ax.set_zlabel("f(x, y)")
+        ax.set_title(f"Щільність f(x, y): x̄={mx:.3g}, ȳ={my:.3g}, Sₓ={sx:.3g}, Sᵧ={sy:.3g}, r̂={r:.3f}", fontsize=9)
