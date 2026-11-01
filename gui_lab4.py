@@ -1,5 +1,6 @@
 """gui_lab4.py - вклдака ЛР4 - коефіцієнти Пірсона, Спірмена, лінійна регресія, R², 3D-щільність"""
 import tkinter as tk
+import io
 from tkinter import ttk, messagebox, filedialog
 import numpy as np
 import pandas as pd
@@ -56,13 +57,31 @@ class RegTab(ttk.Frame):
             if p.lower().endswith((".xlsx", ".xlsm", ".xls")):
                 df = pd.read_excel(p, header=None, dtype=str)
             else:
-                df = pd.read_csv(p, header=None, sep=None, engine="python", dtype=str, encoding="utf-8-sig")
-            if df.shape[1] < 2:
-                raise ValueError("Потрібно щонайменше 2 стовпці (X, Y)")
-            pairs = [(dp.to_float(a)[0], dp.to_float(b)[0]) for a, b in zip(df[0], df[1])]
-            pairs = [(a, b) for a, b in pairs if not (np.isnan(a) or np.isnan(b))]   # заголовки й пропуски відпадають
-            if not pairs:
-                raise ValueError("У перших двох стовпцях немає числових пар")
+                for enc in ("utf-8-sig", "cp1251"):
+                    try:
+                        text = open(p, encoding=enc).read();
+                        break
+                    except UnicodeDecodeError:
+                        pass
+                first = next((ln for ln in text.splitlines() if ln.strip()), "")
+                sep = ";" if ";" in first else "\t" if "\t" in first else ","
+                df = pd.read_csv(io.StringIO(text), header=None, sep=sep, dtype=str,
+                                 engine="python", on_bad_lines="skip")
+            df = df.dropna(how="all").dropna(axis=1, how="all")
+            num = df.apply(lambda col: col.map(lambda c: dp.to_float(c)[0]))
+            names = [str(v).strip().lower() for v in df.iloc[0]]  # перший рядок як можливий заголовок
+            if "x" in names and "y" in names:
+                cx, cy = names.index("x"), names.index("y")
+            else:
+                cols = [c for c in num.columns if num[c].notna().sum() >= 4]
+                if len(cols) < 2:
+                    raise ValueError("Не знайдено двох числових стовпців (X, Y)")
+                if len(cols) > 2:
+                    raise ValueError(f"Числових стовпців {len(cols)}: підпишіть їх у першому рядку X і Y")
+                cx, cy = cols
+            pairs = [(a, b) for a, b in zip(num[cx], num[cy]) if not (np.isnan(a) or np.isnan(b))]
+            if len(pairs) < 4:
+                raise ValueError("Менше 4 числових пар у стовпцях X, Y")
             self.set_xy([a for a, _ in pairs], [b for _, b in pairs])
         except Exception as ex:
             messagebox.showerror("Помилка", str(ex))
@@ -124,7 +143,7 @@ class RegTab(ttk.Frame):
                                                        else "суттєва різниця → можливі викиди або нелінійність."),
              f"3) ŷ = {reg['a']:.4f} + {reg['b']:.4f}·x; b̂: +1 до x змінює y в середньому на {reg['b']:.4f}.",
              f"   a: t = {reg['t_a']:.3f} → {yn(reg['ok_a'])}; b: t = {reg['t_b']:.3f} → {yn(reg['ok_b'])} (tкр = {reg['tq']:.3f}).",
-             (f"   H₀: a = 0 {'відхиляємо' if reg['ok_a'] else 'не відхиляємо — лінія може проходити через початок координат'}."),
+             (f"   H₀: a = 0 {'відхиляємо' if reg['ok_a'] else 'не відхиляємо - лінія може проходити через початок координат'}."),
              f"4) R² = {reg['R2']:.4f}: модель пояснює {100 * reg['R2']:.1f} % розкиду Y, "
-             f"{100 * (1 - reg['R2']):.1f} % — неврахованими чинниками. Перевірка: r̂² = {r * r:.4f}."]
+             f"{100 * (1 - reg['R2']):.1f} % - неврахованими чинниками. Перевірка: r̂² = {r * r:.4f}."]
         self.txt.delete("1.0", "end"); self.txt.insert("1.0", "\n".join(s))
