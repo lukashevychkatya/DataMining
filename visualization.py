@@ -158,7 +158,7 @@ def plot_regression(ax, x, y, reg, removed=None):
                    label="відкинуті за правилом 3σ")
     g = np.array([min(x), max(x)])
     ax.plot(g, reg["a"] + reg["b"] * g, "r-", lw=2,
-            label=f"ŷ = {reg['a']:.4g} + {reg['b']:.4g}·x,  R² = {reg['R2']:.4f}")
+            label=f"ŷ = {reg['a']:.4g} {'+' if reg['b'] >= 0 else '−'} {abs(reg['b']):.4g}·x,  R² = {reg['R2']:.4f}")
     ax.scatter([reg["x_mean"]], [reg["y_mean"]], c="k", marker="D", s=45, zorder=5, label="(x̄; ȳ)")
     ax.set_title("Кореляційне поле та лінія регресії")
     ax.set_xlabel("x"); ax.set_ylabel("y")

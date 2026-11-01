@@ -108,16 +108,16 @@ class RegTab(ttk.Frame):
         yn = lambda ok: "значущий" if ok else "незначущий"
         self.tcor.delete(*self.tcor.get_children())
         self.tcor.insert("", "end", values=("Пірсона r̂", f"{r:.4f}", f"{lo:.4f}", f"{hi:.4f}", _fmt(t_r), _fmt(tc),
-                                            _fmt(p_r), f"H₀: r = 0 {'відхиляємо' if ok_r else 'не відхиляємо'} — {yn(ok_r)}"))
+                                            _fmt(p_r), f"H₀: r = 0 {'відхиляємо' if ok_r else 'не відхиляємо'} - {yn(ok_r)}"))
         self.tcor.insert("", "end", values=("Спірмена ρ̂", f"{rho:.4f}", "—", "—", _fmt(t_s), _fmt(tc),
-                                            _fmt(p_s), f"H₀: ρ = 0 {'відхиляємо' if ok_s else 'не відхиляємо'} — {yn(ok_s)}"))
+                                            _fmt(p_s), f"H₀: ρ = 0 {'відхиляємо' if ok_s else 'не відхиляємо'} - {yn(ok_s)}"))
         self.treg.delete(*self.treg.get_children())
         for nm, key, sg in (("a (вільний член)", "a", "s_a"), ("b (нахил)", "b", "s_b")):
             ok = reg["ok_" + key]
             self.treg.insert("", "end", values=(nm, f"{reg[key]:.5g}", f"{reg[sg]:.4g}", f"{reg[key + '_lo']:.5g}",
                                                 f"{reg[key + '_hi']:.5g}", _fmt(reg["t_" + key]), _fmt(reg["tq"]),
                                                 _fmt(reg["p_" + key]),
-                                                f"H₀: {key} = 0 {'відхиляємо' if ok else 'не відхиляємо'} — {yn(ok)}"))
+                                                f"H₀: {key} = 0 {'відхиляємо' if ok else 'не відхиляємо'} - {yn(ok)}"))
         self.r2_lab.config(text=f"R² = {reg['R2']:.4f} ({100 * reg['R2']:.2f} %);  Sзал = {reg['s_res']:.4g};  "
                                 f"ν = N − 2 = {reg['nu']};  γ = {gamma:g}, α = {alpha:g}")
         # графіки
@@ -136,14 +136,14 @@ class RegTab(ttk.Frame):
              f"p = {p_r:.4g}.",
              (f"   |t| > tкр → H₀: r = 0 відхиляємо: лінійний зв'язок значущий, {direction}, "
               f"за шкалою Чеддока {ms.chaddock(r)} (|r̂| = {abs(r):.3f})."
-              if ok_r else f"   |t| ≤ tкр → H₀: r = 0 не відхиляємо: лінійний зв'язок статистично не підтверджено."),
+              if ok_r else f"   |t| ≤ tкр → H₀: r = 0 не відхиляємо: лінійний зв'язок статистично не підтверджено"),
              f"2) ρ̂ = {rho:.4f}, t = {t_s:.3f}, p = {p_s:.4g}: монотонний зв'язок {yn(ok_s)}, {ms.chaddock(rho)}."
              + ("" if n >= 10 else "  (N < 10 — перевірка значущості ρ̂ за t наближена)"),
              f"   |r̂ − ρ̂| = {abs(r - rho):.3f}: " + ("близькі → зв'язок лінійний, викидів немає." if abs(r - rho) < 0.1
-                                                       else "суттєва різниця → можливі викиди або нелінійність."),
-             f"3) ŷ = {reg['a']:.4f} + {reg['b']:.4f}·x; b̂: +1 до x змінює y в середньому на {reg['b']:.4f}.",
-             f"   a: t = {reg['t_a']:.3f} → {yn(reg['ok_a'])}; b: t = {reg['t_b']:.3f} → {yn(reg['ok_b'])} (tкр = {reg['tq']:.3f}).",
-             (f"   H₀: a = 0 {'відхиляємо' if reg['ok_a'] else 'не відхиляємо - лінія може проходити через початок координат'}."),
+                                                       else "суттєва різниця → можливі викиди або нелінійність"),
+             f"3) ŷ = {reg['a']:.4f} + {reg['b']:.4f}·x; b̂: +1 до x змінює y в середньому на {reg['b']:.4f}",
+             f"   a: t = {reg['t_a']:.3f} → {yn(reg['ok_a'])}; b: t = {reg['t_b']:.3f} → {yn(reg['ok_b'])} (tкр = {reg['tq']:.3f})",
+             (f"   H₀: a = 0 {'відхиляємо' if reg['ok_a'] else 'не відхиляємо - лінія може проходити через початок координат'}"),
              f"4) R² = {reg['R2']:.4f}: модель пояснює {100 * reg['R2']:.1f} % розкиду Y, "
              f"{100 * (1 - reg['R2']):.1f} % - неврахованими чинниками. Перевірка: r̂² = {r * r:.4f}."]
         self.txt.delete("1.0", "end"); self.txt.insert("1.0", "\n".join(s))
